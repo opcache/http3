@@ -1,5 +1,5 @@
 ##################################################
-# Nginx with Quiche (HTTP/3), Brotli, Headers More
+# Nginx with nginx-quic (HTTP/3), Brotli, Headers More
 # modules.
 ##################################################
 
@@ -7,12 +7,12 @@ FROM alpine:edge AS builder
 
 LABEL maintainer="Ranadeep Polavarapu <RanadeepPolavarapu@users.noreply.github.com>"
 
-ENV NGINX_VERSION 1.16.1
-ENV NGX_BROTLI_COMMIT 25f86f0bac1101b6512135eac5f93c49c63609e3
+ENV NGINX_VERSION 1.21.0
+ENV NGX_BROTLI_COMMIT 9aec15e2aa6feea2113119ba06460af70ab3ea62
 ENV PCRE_VERSION 8.44
 ENV ZLIB_VERSION 1.2.11
 
-RUN GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
+RUN set -x; GPG_KEYS=573BFD6B3D8FBC641079A6ABABF5BD827BD9BF62 \
   && CONFIG="\
   --prefix=/etc/nginx \
   --sbin-path=/usr/sbin/nginx \
@@ -61,9 +61,7 @@ RUN GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
   --with-compat \
   --with-file-aio \
   --with-http_v2_module \
-  --with-http_v3_module \
-  --with-openssl=/usr/src/quiche/deps/boringssl \
-  --with-quiche=/usr/src/quiche \
+  --with-openssl=/usr/src/boringssl \
   --add-module=/usr/src/ngx_brotli \
   --add-module=/usr/src/headers-more-nginx-module \
   --add-module=/usr/src/njs/nginx \
@@ -77,32 +75,30 @@ RUN GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
   && apk add --no-cache ca-certificates \
   && update-ca-certificates \
   && apk add --no-cache --virtual .build-deps \
+  curl \
   gcc \
+  gd-dev \
+  geoip-dev \
+  gnupg \
   libc-dev \
+  libxslt-dev \
+  linux-headers \
   make \
   openssl-dev \
   pcre-dev \
-  zlib-dev \
-  linux-headers \
-  curl \
-  gnupg \
-  libxslt-dev \
-  gd-dev \
-  geoip-dev \
   perl-dev \
+  zlib-dev \
   && apk add --no-cache --virtual .brotli-build-deps \
   autoconf \
-  libtool \
   automake \
-  git \
-  g++ \
   cmake \
-  make \
+  g++ \
+  git \
   go \
-  perl \
-  rust \
-  cargo \
+  libtool \
+  mercurial \
   patch \
+  perl \
   && mkdir -p /usr/src \
   && cd /usr/src \
   && git clone --depth=1 --recursive --shallow-submodules https://github.com/google/ngx_brotli \
@@ -110,33 +106,34 @@ RUN GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
   && git checkout -b $NGX_BROTLI_COMMIT \
   && cd .. \
   && wget -qO- https://ftp.pcre.org/pub/pcre/pcre-${PCRE_VERSION}.tar.gz | tar zxvf - \
+  && cd pcre-${PCRE_VERSION} \
+  && ./configure \
+  && make \
+  && make install \
+  && cd .. \
   && wget -qO- http://zlib.net/zlib-${ZLIB_VERSION}.tar.gz | tar zxvf - \
+  && cd zlib-${ZLIB_VERSION} \
+  && ./configure \
+  && make \
+  && make install \
+  && cd .. \
+  && git clone --depth=1 --recursive https://github.com/google/boringssl \
+  && cd boringssl \
+  && mkdir build \
+  && cd build \ 
+  && cmake .. \ 
+  && make \
+  && cd ../.. \
   && git clone --depth=1 --recursive https://github.com/openresty/headers-more-nginx-module \
   && git clone --depth=1 --recursive https://github.com/nginx/njs \
   && git clone --depth=1 --recursive https://github.com/AirisX/nginx_cookie_flag_module \
-  && git clone -b 0.9.0 --depth=1 --recursive https://github.com/cloudflare/quiche \
-  && curl -fSL https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz -o nginx.tar.gz \
-  && curl -fSL https://nginx.org/download/nginx-$NGINX_VERSION.tar.gz.asc  -o nginx.tar.gz.asc \
-  && export GNUPGHOME="$(mktemp -d)" \
-  && found=''; \
-  for server in \
-  ha.pool.sks-keyservers.net \
-  hkp://keyserver.ubuntu.com:80 \
-  hkp://p80.pool.sks-keyservers.net:80 \
-  pgp.mit.edu \
-  ; do \
-  echo "Fetching GPG key $GPG_KEYS from $server"; \
-  gpg --keyserver "$server" --keyserver-options timeout=10 --recv-keys "$GPG_KEYS" && found=yes && break; \
-  done; \
-  test -z "$found" && echo >&2 "error: failed to fetch GPG key $GPG_KEYS" && exit 1; \
-  gpg --batch --verify nginx.tar.gz.asc nginx.tar.gz \
-  && rm -rf "$GNUPGHOME" nginx.tar.gz.asc \
   && mkdir -p /usr/src \
-  && tar -zxC /usr/src -f nginx.tar.gz \
-  && rm nginx.tar.gz \
-  && cd /usr/src/nginx-$NGINX_VERSION \
-  && patch -p01 < /usr/src/quiche/extras/nginx/nginx-1.16.patch \
-  && ./configure $CONFIG --with-debug --build="pcre-${PCRE_VERSION} zlib-${ZLIB_VERSION} quiche-$(git --git-dir=/usr/src/quiche/.git rev-parse --short HEAD) ngx_brotli-$(git --git-dir=/usr/src/ngx_brotli/.git rev-parse --short HEAD) headers-more-nginx-module-$(git --git-dir=/usr/src/headers-more-nginx-module/.git rev-parse --short HEAD) njs-$(git --git-dir=/usr/src/njs/.git rev-parse --short HEAD) nginx_cookie_flag_module-$(git --git-dir=/usr/src/nginx_cookie_flag_module/.git rev-parse --short HEAD)" \
+  && cd /usr/src \
+  && hg clone -b quic https://hg.nginx.org/nginx-quic \
+  && mv nginx-quic nginx-${NGINX_VERSION} \
+  && cd nginx-${NGINX_VERSION} \
+  && NGINX_QUIC_REVISION=$(hg id -i) \
+  && ./auto/configure $CONFIG --with-debug --with-http_v3_module --with-http_quic_module --with-stream_quic_module --with-cc-opt="-I../boringssl/include" --with-ld-opt="-L../boringssl/build/ssl -L../boringssl/build/crypto" --build="pcre-${PCRE_VERSION} zlib-${ZLIB_VERSION} boringssl-$(git --git-dir=/usr/src/boringssl/.git rev-parse --short HEAD) nginx-quic-${NGINX_QUIC_REVISION} ngx_brotli-$(git --git-dir=/usr/src/ngx_brotli/.git rev-parse --short HEAD) headers-more-nginx-module-$(git --git-dir=/usr/src/headers-more-nginx-module/.git rev-parse --short HEAD) njs-$(git --git-dir=/usr/src/njs/.git rev-parse --short HEAD) nginx_cookie_flag_module-$(git --git-dir=/usr/src/nginx_cookie_flag_module/.git rev-parse --short HEAD)" \
   && make -j$(getconf _NPROCESSORS_ONLN) \
   && mv objs/nginx objs/nginx-debug \
   && mv objs/ngx_http_xslt_filter_module.so objs/ngx_http_xslt_filter_module-debug.so \
@@ -144,7 +141,7 @@ RUN GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
   && mv objs/ngx_http_geoip_module.so objs/ngx_http_geoip_module-debug.so \
   && mv objs/ngx_http_perl_module.so objs/ngx_http_perl_module-debug.so \
   && mv objs/ngx_stream_geoip_module.so objs/ngx_stream_geoip_module-debug.so \
-  && ./configure $CONFIG --build="pcre-${PCRE_VERSION} zlib-${ZLIB_VERSION} quiche-$(git --git-dir=/usr/src/quiche/.git rev-parse --short HEAD) ngx_brotli-$(git --git-dir=/usr/src/ngx_brotli/.git rev-parse --short HEAD) headers-more-nginx-module-$(git --git-dir=/usr/src/headers-more-nginx-module/.git rev-parse --short HEAD) njs-$(git --git-dir=/usr/src/njs/.git rev-parse --short HEAD) nginx_cookie_flag_module-$(git --git-dir=/usr/src/nginx_cookie_flag_module/.git rev-parse --short HEAD)" \
+  && ./auto/configure $CONFIG --with-http_v3_module --with-http_quic_module --with-stream_quic_module --with-cc-opt="-I../boringssl/include" --with-ld-opt="-L../boringssl/build/ssl -L../boringssl/build/crypto" --build="pcre-${PCRE_VERSION} zlib-${ZLIB_VERSION} boringssl-$(git --git-dir=/usr/src/boringssl/.git rev-parse --short HEAD) nginx-quic-${NGINX_QUIC_REVISION} ngx_brotli-$(git --git-dir=/usr/src/ngx_brotli/.git rev-parse --short HEAD) headers-more-nginx-module-$(git --git-dir=/usr/src/headers-more-nginx-module/.git rev-parse --short HEAD) njs-$(git --git-dir=/usr/src/njs/.git rev-parse --short HEAD) nginx_cookie_flag_module-$(git --git-dir=/usr/src/nginx_cookie_flag_module/.git rev-parse --short HEAD)" \
   && make -j$(getconf _NPROCESSORS_ONLN) \
   && make install \
   && rm -rf /etc/nginx/html/ \
@@ -166,7 +163,8 @@ RUN GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
   && rm -rf /usr/src/headers-more-nginx-module \
   && rm -rf /usr/src/njs \
   && rm -rf /usr/src/nginx_cookie_flag_module \
-  && rm -rf /usr/src/quiche \
+  && rm -rf /usr/src/boringssl \
+  && rm -rf /usr/src/nginx-quic \
   \
   # Bring in gettext so we can get `envsubst`, then throw
   # the rest away. To do this, we need to install `gettext`
@@ -214,8 +212,6 @@ RUN \
   && addgroup -S nginx \
   && adduser -D -S -h /var/cache/nginx -s /sbin/nologin -G nginx nginx \
   # forward request and error logs to docker log collector
-  && cp -R /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
-  && echo 'Asia/Shanghai' > /etc/timezone \
   && mkdir -p /var/log/nginx \
   && touch /var/log/nginx/access.log /var/log/nginx/error.log \
   && chown nginx: /var/log/nginx/access.log /var/log/nginx/error.log \
