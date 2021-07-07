@@ -14,7 +14,7 @@ ENV ZLIB_VERSION 1.2.11
 ENV QUICHE_COMMIT f86de8f18e930f823e00b43b08eee47dc52aa635
 
 RUN set -x; GPG_KEYS=B0F4253373F8F6F510D42178520A9993A1C052F8 \
-  && CONFIG="\
+  && CONFIG=" \
   --prefix=/etc/nginx \
   --sbin-path=/usr/sbin/nginx \
   --modules-path=/usr/lib/nginx/modules \
