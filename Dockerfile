@@ -218,6 +218,8 @@ RUN \
   && mkdir -p /var/log/nginx \
   && touch /var/log/nginx/access.log /var/log/nginx/error.log \
   && chown nginx: /var/log/nginx/access.log /var/log/nginx/error.log \
+  && cp -R /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
+  && echo 'Asia/Shanghai' > /etc/timezone \
   && ln -sf /dev/stdout /var/log/nginx/access.log \
   && ln -sf /dev/stderr /var/log/nginx/error.log
 
